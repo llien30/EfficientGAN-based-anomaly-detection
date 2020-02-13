@@ -19,8 +19,8 @@ batch_size: 100
 ```
 
 ### :exclamation: Attention
-- expected image size is ...
+- the network was checked to work properly in only the following image-size
 ```
-channel : 1
-height, width  : 64(the multiple of 16 will be OK.)
+channel : 1, 3
+height, width  : 64
 ```
