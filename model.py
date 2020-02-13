@@ -13,11 +13,11 @@ class Encoder(nn.Module):
     def __init__(self, input_size, z_dim, channel, nef, n_extra_layer=0):
         super(Encoder, self).__init__()
 
-        assert input_size%7==0, 'input size has to be a multiple of 7'
+        assert input_size%16==0, 'input size has to be a multiple of 16'
 
         main = nn.Sequential()
 
-        cnef, tisize = nef, 7
+        cnef, tisize = nef, 8
         while tisize != input_size:
             cnef = cnef//2
             tisize = tisize*2
@@ -30,7 +30,7 @@ class Encoder(nn.Module):
                         nn.LeakyReLU(0.1, inplace=True))
         csize = input_size
 
-        while csize > 7:
+        while csize > 8:
             #official kernel_size is 3 but changed to 4
             main.add_module('pyramid_Conv-{}-{}'.format(cnef, cnef*2),
                             nn.Conv2d(cnef, cnef*2, kernel_size=4, stride=2, padding=1, bias=False))
@@ -49,7 +49,7 @@ class Encoder(nn.Module):
             main.add_module('extra_LeakyReLU-{}'.format(cnef),
                             nn.LeakyReLU(0.1, inplace=True))
 
-        main.add_module('last_linear-{}-{}'.format(cnef*7*7, z_dim),
+        main.add_module('last_linear-{}-{}'.format(cnef*8*8, z_dim),
                         cnef*7*7, z_dim, bias=False)
 
         self.main = main
@@ -74,7 +74,7 @@ class NetE(nn.Module):
 
     def forward(self, x, CONFIG):
         out = self.pyramid(x)
-        out = out.view(-1, CONFIG.nef*7*7) #change to the one dimentional vector
+        out = out.view(-1, CONFIG.nef*8*8) #change to the one dimentional vector
         out = self.linear(out)
 
         return out
@@ -91,7 +91,7 @@ class Generator(nn.Module):
     def __init__(self, input_size, z_dim, channel, ngf, n_extra_layer=0):
         super(Generator, self).__init__()
 
-        assert input_size%7==0, 'input size has to be a multiple of 7'
+        assert input_size%16==0, 'input size has to be a multiple of 16'
 
         main = nn.Sequential()
 
@@ -102,13 +102,13 @@ class Generator(nn.Module):
         main.add_module('initial_ReLU-{}'.format(1024),
                         nn.ReLU(inplace=True))
 
-        main.add_module('second_Linear-{}-{}'.format(1024, cngf*7*7),
-                        nn.Linear(1024, cngf*7*7, bias=False))
-        main.add_module('second_BatchNorm-{}'.format(ngf*7*7),
-                        nn.BatchNorm1d(ngf*7*7))
-        main.add_module('second_ReLU-{}'.format(ngf*7*7),
+        main.add_module('second_Linear-{}-{}'.format(1024, cngf*8*8),
+                        nn.Linear(1024, cngf*8*8, bias=False))
+        main.add_module('second_BatchNorm-{}'.format(ngf*8*8),
+                        nn.BatchNorm1d(ngf*8*8))
+        main.add_module('second_ReLU-{}'.format(ngf*8*8),
                         nn.ReLU(inplace=True))
-        csize = 7
+        csize = 8
         cngf = ngf
 
         while csize < input_size//2:
@@ -156,7 +156,7 @@ class NetG(nn.module):
 
     def forward(self, z, CONFIG):
         out = self.linear(z)
-        out = out.view(z.shape[0], ngf, 7, 7) #(batch size, channel, height, width)
+        out = out.view(z.shape[0], ngf, 8, 8) #(batch size, channel, height, width)
         out = self.pyramid(out)
 
         return out
@@ -173,9 +173,9 @@ class Discriminator(nn.Module):
     def __init__(self, input_size, z_dim, channel, ndf, n_extra_layer=0):
         super(Discriminator, self).__init__()
 
-        assert input_size%7==0, 'input_size has to be a multiple of 7'
+        assert input_size%16==0, 'input_size has to be a multiple of 16'
 
-        cndf, tisize = ndf, 7
+        cndf, tisize = ndf, 8
         while tisize != input_size//2:
             cndf = cndf//2
             tisize = tisize*2
@@ -191,7 +191,7 @@ class Discriminator(nn.Module):
                         nn.Dropout(inplace=True))
         csize = input_size // 2
 
-        while csize > 14:
+        while csize > 16:
             D_x.add_module('pyramid_Conv-{}-{}'.format(cndf, cndf*2),
                             nn.Conv2d(cndf, cndf*2, kernel_size=4, stride=2, padding=1, bias=False))
             D_x.add_module('pyramid_LeakyReLU-{}'.format(cndf*2),
@@ -228,8 +228,8 @@ class Discriminator(nn.Module):
 
         #D(x,z)
         D_xz = nn.Sequential()
-        D_xz.add_module('concat_Linear-{}-{}'.format(512+cndf*7*7, 1024),
-                        nn.Linear(512+cndf*7*7, 1024))
+        D_xz.add_module('concat_Linear-{}-{}'.format(512+cndf*8*8, 1024),
+                        nn.Linear(512+cndf*8*8, 1024))
         D_xz.add_module('concat_LeakyReLU-{}'.format(1024),
                         nn.LeakyReLU(0.1, inplace=True))
         D_xz.add_module('concat_Dropout-{}'.format(1024),
@@ -269,7 +269,7 @@ class NetD(nn.Module):
 
     def forward(self, x, z, CONFIG):
         x_out = self.layer_x(x)
-        x_out = out.view(-1, CONFIG.ndf*7*7)
+        x_out = out.view(-1, CONFIG.ndf*8*8)
 
         z_out = self.layer_z(z)
 

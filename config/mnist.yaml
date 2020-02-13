@@ -1,0 +1,10 @@
+input_size: 64
+channel: 1
+
+#the hyper parameters of EGBAD
+z_dim: 100
+nef: 128
+ngf: 128
+ndf: 64
+
+batch_size: 100
