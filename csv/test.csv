@@ -1,0 +1,16 @@
+img_path,cls_id,cls_label
+./data/test/NORMAL/img_8_2.jpg,0,NORMAL
+./data/test/NORMAL/img_8_3.jpg,0,NORMAL
+./data/test/NORMAL/img_8_1.jpg,0,NORMAL
+./data/test/NORMAL/img_8_0.jpg,0,NORMAL
+./data/test/NORMAL/img_8_4.jpg,0,NORMAL
+./data/test/NORMAL/img_7_4.jpg,0,NORMAL
+./data/test/NORMAL/img_7_1.jpg,0,NORMAL
+./data/test/NORMAL/img_7_0.jpg,0,NORMAL
+./data/test/NORMAL/img_7_2.jpg,0,NORMAL
+./data/test/NORMAL/img_7_3.jpg,0,NORMAL
+./data/test/ABNORMAL/img_2_0.jpg,1,ABNORMAL
+./data/test/ABNORMAL/img_2_1.jpg,1,ABNORMAL
+./data/test/ABNORMAL/img_2_3.jpg,1,ABNORMAL
+./data/test/ABNORMAL/img_2_2.jpg,1,ABNORMAL
+./data/test/ABNORMAL/img_2_4.jpg,1,ABNORMAL
