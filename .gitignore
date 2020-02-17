@@ -2,3 +2,4 @@
 data
 .vscode
 *.png
+__pycache__
