@@ -1,0 +1,21 @@
+train_csv_file: ./csv/train.csv
+
+input_size: 64
+channel: 1
+
+# the hyper parameters of EGBAD
+z_dim: 20
+nef: 128
+ngf: 128
+ndf: 64
+
+batch_size: 10 
+
+num_epochs: 500
+num_fakeimg: 10
+
+# for wandb 
+name: 20200217
+
+# training output
+save_dir: ./weights
