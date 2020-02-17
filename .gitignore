@@ -1,5 +1,9 @@
 .py
+discriminator.py
+generator.py
+encoder.py
 data
 .vscode
 *.png
 __pycache__
+./libs/__pycache__

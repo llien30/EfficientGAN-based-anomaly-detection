@@ -24,7 +24,7 @@ num_epochs: 500
 num_fakeimg: 10
 
 # for wandb
-name: 20200217
+name: first
 
 # training output
 save_dir: ./weights

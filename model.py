@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-class Encoder(nn.Module):
+def make_Encoder(input_size, z_dim, channel, nef, n_extra_layer=0):
     """
     BiGAN Encoder network
 
@@ -11,68 +11,54 @@ class Encoder(nn.Module):
     channel : the number of channels of the data
     nef : the number of filters in encoder
     """
+    assert input_size % 16 == 0, "input size has to be a multiple of 16"
 
-    def __init__(self, input_size, z_dim, channel, nef, n_extra_layer=0):
-        super(Encoder, self).__init__()
+    main = nn.Sequential()
 
-        assert input_size % 16 == 0, "input size has to be a multiple of 16"
+    cnef, tisize = nef, 8
+    while tisize != input_size:
+        cnef = cnef // 2
+        tisize = tisize * 2
 
-        main = nn.Sequential()
+    main.add_module(
+        "initial_Conv-{}-{}".format(channel, cnef),
+        nn.Conv2d(channel, cnef, kernel_size=3, stride=1, padding=1, bias=False),
+    )
+    # the number of stride is the default setting of tf
+    # output size is the same as input_size
+    main.add_module("initial_LeakyRU-{}".format(cnef), nn.LeakyReLU(0.1, inplace=True))
+    csize = input_size
 
-        cnef, tisize = nef, 8
-        while tisize != input_size:
-            cnef = cnef // 2
-            tisize = tisize * 2
-
+    while csize > 8:
+        # official kernel_size is 3 but changed to 4
         main.add_module(
-            "initial_Conv-{}-{}".format(channel, cnef),
-            nn.Conv2d(channel, cnef, kernel_size=3, stride=1, padding=1, bias=False),
+            "pyramid_Conv-{}-{}".format(cnef, cnef * 2),
+            nn.Conv2d(cnef, cnef * 2, kernel_size=4, stride=2, padding=1, bias=False),
         )
-        # the number of stride is the default setting of tf
-        # output size is the same as input_size
         main.add_module(
-            "initial_LeakyRU-{}".format(cnef), nn.LeakyReLU(0.1, inplace=True)
+            "pyramid_BatchNorm-{}".format(cnef * 2), nn.BatchNorm2d(cnef * 2)
         )
-        csize = input_size
-
-        while csize > 8:
-            # official kernel_size is 3 but changed to 4
-            main.add_module(
-                "pyramid_Conv-{}-{}".format(cnef, cnef * 2),
-                nn.Conv2d(
-                    cnef, cnef * 2, kernel_size=4, stride=2, padding=1, bias=False
-                ),
-            )
-            main.add_module(
-                "pyramid_BatchNorm-{}".format(cnef * 2), nn.BatchNorm2d(cnef * 2)
-            )
-            main.add_module(
-                "pyramid_LeakyReLU-{}".format(cnef * 2), nn.LeakyReLU(0.1, inplace=True)
-            )
-            csize = csize // 2
-            cnef = cnef * 2
-
-        for l in range(n_extra_layer):
-            main.add_module(
-                "extra_Conv-{}-{}".format(cnef, cnef),
-                nn.Conv2d(cnef, cnef, kernel_size=3, stride=1, padding=1, bias=False),
-            )
-            main.add_module("extra_BatchNorm-{}".format(cnef), nn.BatchNorm2d(cnef))
-            main.add_module(
-                "extra_LeakyReLU-{}".format(cnef), nn.LeakyReLU(0.1, inplace=True)
-            )
-
         main.add_module(
-            "last_linear-{}-{}".format(cnef * 8 * 8, z_dim),
-            nn.Linear(cnef * 8 * 8, z_dim),
+            "pyramid_LeakyReLU-{}".format(cnef * 2), nn.LeakyReLU(0.1, inplace=True)
+        )
+        csize = csize // 2
+        cnef = cnef * 2
+
+    for l in range(n_extra_layer):
+        main.add_module(
+            "extra_Conv-{}-{}".format(cnef, cnef),
+            nn.Conv2d(cnef, cnef, kernel_size=3, stride=1, padding=1, bias=False),
+        )
+        main.add_module("extra_BatchNorm-{}".format(cnef), nn.BatchNorm2d(cnef))
+        main.add_module(
+            "extra_LeakyReLU-{}".format(cnef), nn.LeakyReLU(0.1, inplace=True)
         )
 
-        self.main = main
+    main.add_module(
+        "last_linear-{}-{}".format(cnef * 8 * 8, z_dim), nn.Linear(cnef * 8 * 8, z_dim),
+    )
 
-    def forward(self, input):
-        output = self.main(input)
-
-        return output
+    return main
 
 
 class NetE(nn.Module):
@@ -83,8 +69,10 @@ class NetE(nn.Module):
     def __init__(self, CONFIG):
         super(NetE, self).__init__()
 
-        model = Encoder(CONFIG.input_size, CONFIG.z_dim, CONFIG.channel, CONFIG.nef)
-        layers = list(model.main.children())
+        model = make_Encoder(
+            CONFIG.input_size, CONFIG.z_dim, CONFIG.channel, CONFIG.nef
+        )
+        layers = list(model.children())
 
         self.pyramid = nn.Sequential(*layers[:-1])
         self.linear = nn.Sequential(layers[-1])
@@ -97,7 +85,7 @@ class NetE(nn.Module):
         return out
 
 
-class Generator(nn.Module):
+def make_Generator(input_size, z_dim, channel, ngf, n_extra_layer=0):
     """
     BiGAN Generator network
 
@@ -106,70 +94,60 @@ class Generator(nn.Module):
     channel : the number of channels of the image
     ngf : the number of Generator's filter
     """
+    assert input_size % 16 == 0, "input size has to be a multiple of 16"
 
-    def __init__(self, input_size, z_dim, channel, ngf, n_extra_layer=0):
-        super(Generator, self).__init__()
+    main = nn.Sequential()
 
-        assert input_size % 16 == 0, "input size has to be a multiple of 16"
+    main.add_module(
+        "initial_Linear-{}-{}".format(z_dim, 1024), nn.Linear(z_dim, 1024, bias=False),
+    )
+    main.add_module("initial_BatchNorm-{}".format(1024), nn.BatchNorm1d(1024))
+    main.add_module("initial_ReLU-{}".format(1024), nn.ReLU(inplace=True))
 
-        main = nn.Sequential()
+    main.add_module(
+        "second_Linear-{}-{}".format(1024, ngf * 8 * 8),
+        nn.Linear(1024, ngf * 8 * 8, bias=False),
+    )
+    main.add_module(
+        "second_BatchNorm-{}".format(ngf * 8 * 8), nn.BatchNorm1d(ngf * 8 * 8)
+    )
+    main.add_module("second_ReLU-{}".format(ngf * 8 * 8), nn.ReLU(inplace=True))
+    csize = 8
+    cngf = ngf
 
+    while csize < input_size // 2:
         main.add_module(
-            "initial_Linear-{}-{}".format(z_dim, 1024),
-            nn.Linear(z_dim, 1024, bias=False),
-        )
-        main.add_module("initial_BatchNorm-{}".format(1024), nn.BatchNorm1d(1024))
-        main.add_module("initial_ReLU-{}".format(1024), nn.ReLU(inplace=True))
-
-        main.add_module(
-            "second_Linear-{}-{}".format(1024, ngf * 8 * 8),
-            nn.Linear(1024, ngf * 8 * 8, bias=False),
-        )
-        main.add_module(
-            "second_BatchNorm-{}".format(ngf * 8 * 8), nn.BatchNorm1d(ngf * 8 * 8)
-        )
-        main.add_module("second_ReLU-{}".format(ngf * 8 * 8), nn.ReLU(inplace=True))
-        csize = 8
-        cngf = ngf
-
-        while csize < input_size // 2:
-            main.add_module(
-                "pyramid_Convt-{}-{}".format(cngf, cngf // 2),
-                nn.ConvTranspose2d(
-                    cngf, cngf // 2, kernel_size=4, stride=2, padding=1, bias=False
-                ),
-            )
-            main.add_module(
-                "pyramid_BatchNorm-{}".format(cngf // 2), nn.BatchNorm2d(cngf // 2)
-            )
-            main.add_module("pyramid_ReLU-{}".format(cngf // 2), nn.ReLU(inplace=True))
-            cngf = cngf // 2
-            csize = csize * 2
-
-        for l in range(n_extra_layer):
-            main.add_module(
-                "extra_Convt-{}-{}".format(cngf, cngf),
-                nn.ConvTranspose2d(
-                    cngf, cngf, kernel_size=3, stride=1, padding=1, bias=False
-                ),
-            )
-            main.add_module("extra_BatchNorm-{}".format(cngf), nn.BatchNorm2d(cngf))
-            main.add_module("extra_ReLU-{}".format(cngf), nn.ReLU(inplace=True))
-
-        main.add_module(
-            "last_Convt-{}-{}".format(cngf, channel),
+            "pyramid_Convt-{}-{}".format(cngf, cngf // 2),
             nn.ConvTranspose2d(
-                cngf, channel, kernel_size=4, stride=2, padding=1, bias=False
+                cngf, cngf // 2, kernel_size=4, stride=2, padding=1, bias=False
             ),
         )
-        main.add_module("last_Tanh-{}".format(channel), nn.Tanh())
+        main.add_module(
+            "pyramid_BatchNorm-{}".format(cngf // 2), nn.BatchNorm2d(cngf // 2)
+        )
+        main.add_module("pyramid_ReLU-{}".format(cngf // 2), nn.ReLU(inplace=True))
+        cngf = cngf // 2
+        csize = csize * 2
 
-        self.main = main
+    for l in range(n_extra_layer):
+        main.add_module(
+            "extra_Convt-{}-{}".format(cngf, cngf),
+            nn.ConvTranspose2d(
+                cngf, cngf, kernel_size=3, stride=1, padding=1, bias=False
+            ),
+        )
+        main.add_module("extra_BatchNorm-{}".format(cngf), nn.BatchNorm2d(cngf))
+        main.add_module("extra_ReLU-{}".format(cngf), nn.ReLU(inplace=True))
 
-    def forward(self, input):
-        output = self.main(input)
+    main.add_module(
+        "last_Convt-{}-{}".format(cngf, channel),
+        nn.ConvTranspose2d(
+            cngf, channel, kernel_size=4, stride=2, padding=1, bias=False
+        ),
+    )
+    main.add_module("last_Tanh-{}".format(channel), nn.Tanh())
 
-        return output
+    return main
 
 
 class NetG(nn.Module):
@@ -180,8 +158,10 @@ class NetG(nn.Module):
     def __init__(self, CONFIG):
         super(NetG, self).__init__()
 
-        model = Generator(CONFIG.input_size, CONFIG.z_dim, CONFIG.channel, CONFIG.ngf)
-        layers = list(model.main.children())
+        model = make_Generator(
+            CONFIG.input_size, CONFIG.z_dim, CONFIG.channel, CONFIG.ngf
+        )
+        layers = list(model.children())
 
         self.linear = nn.Sequential(*layers[:6])
         self.pyramid = nn.Sequential(*layers[6:])
@@ -196,7 +176,7 @@ class NetG(nn.Module):
         return out
 
 
-class Discriminator(nn.Module):
+def make_Discriminator(input_size, z_dim, channel, ndf, n_extra_layer=0):
     """
     BiGAN Discriminator network
 
@@ -205,95 +185,71 @@ class Discriminator(nn.Module):
     channel : the number of channels of the image
     ndf : the number of Generator's filter
     """
+    assert input_size % 16 == 0, "input_size has to be a multiple of 16"
 
-    def __init__(self, input_size, z_dim, channel, ndf, n_extra_layer=0):
-        super(Discriminator, self).__init__()
+    cndf, tisize = ndf * 2, 16
+    while tisize != input_size:
+        cndf = cndf // 2
+        tisize = tisize * 2
 
-        assert input_size % 16 == 0, "input_size has to be a multiple of 16"
+    # D(x)
+    D_x = nn.Sequential()
 
-        cndf, tisize = ndf * 2, 16
-        while tisize != input_size:
-            cndf = cndf // 2
-            tisize = tisize * 2
+    D_x.add_module(
+        "initial_Conv-{}-{}".format(channel, cndf),
+        nn.Conv2d(channel, cndf, kernel_size=4, stride=2, padding=1, bias=False),
+    )
+    D_x.add_module("initial_LeakyReLU-{}".format(cndf), nn.LeakyReLU(0.1, inplace=True))
+    D_x.add_module("initial_Dropout-{}".format(cndf), nn.Dropout(inplace=True))
+    csize = input_size // 2
 
-        # D(x)
-        D_x = nn.Sequential()
-
+    while csize > 16:
         D_x.add_module(
-            "initial_Conv-{}-{}".format(channel, cndf),
-            nn.Conv2d(channel, cndf, kernel_size=4, stride=2, padding=1, bias=False),
-        )
-        D_x.add_module(
-            "initial_LeakyReLU-{}".format(cndf), nn.LeakyReLU(0.1, inplace=True)
-        )
-        D_x.add_module("initial_Dropout-{}".format(cndf), nn.Dropout(inplace=True))
-        csize = input_size // 2
-
-        while csize > 16:
-            D_x.add_module(
-                "pyramid_Conv-{}-{}".format(cndf, cndf * 2),
-                nn.Conv2d(
-                    cndf, cndf * 2, kernel_size=4, stride=2, padding=1, bias=False
-                ),
-            )
-            D_x.add_module(
-                "pyramid_LeakyReLU-{}".format(cndf * 2),
-                nn.LeakyReLU(0.1, inplace=True),
-            )
-            D_x.add_module(
-                "pyramid_Dropout-{}".format(cndf * 2), nn.Dropout(inplace=True)
-            )
-            csize = csize // 2
-            cndf = cndf * 2
-
-        for l in range(n_extra_layer):
-            D_x.add_module(
-                "extra_Conv-{}-{}".format(cndf, cndf),
-                nn.Conv2d(cndf, cndf, kernel_size=3, stride=1, padding=1, bias=False),
-            )
-            D_x.add_module(
-                "extra_LeakyReLU-{}".format(cndf), nn.LeakyReLU(0.1, inplace=True)
-            )
-            D_x.add_module("extra_Dropout-{}".format(cndf), nn.Dropout(inplace=True))
-
-        D_x.add_module(
-            "last_Conv-{}-{}".format(cndf, cndf),
-            nn.Conv2d(cndf, cndf, kernel_size=4, stride=2, padding=1, bias=False),
+            "pyramid_Conv-{}-{}".format(cndf, cndf * 2),
+            nn.Conv2d(cndf, cndf * 2, kernel_size=4, stride=2, padding=1, bias=False),
         )
         D_x.add_module(
-            "last_LeakyReLU-{}".format(cndf), nn.LeakyReLU(0.1, inplace=True)
+            "pyramid_LeakyReLU-{}".format(cndf * 2), nn.LeakyReLU(0.1, inplace=True),
         )
-        D_x.add_module("pyramid_Dropout-{}".format(cndf), nn.Dropout(inplace=True))
+        D_x.add_module("pyramid_Dropout-{}".format(cndf * 2), nn.Dropout(inplace=True))
+        csize = csize // 2
+        cndf = cndf * 2
 
-        # D(z)
-        D_z = nn.Sequential()
-
-        D_z.add_module("z_Linear", nn.Linear(z_dim, 512))
-        D_z.add_module("z_LeakyReLU", nn.LeakyReLU(0.1, inplace=True))
-        D_z.add_module("z_Dropout", nn.Dropout(inplace=True))
-
-        # D(x,z)
-        D_xz = nn.Sequential()
-        D_xz.add_module(
-            "concat_Linear-{}-{}".format(512 + cndf * 8 * 8, 1024),
-            nn.Linear(512 + cndf * 8 * 8, 1024),
+    for l in range(n_extra_layer):
+        D_x.add_module(
+            "extra_Conv-{}-{}".format(cndf, cndf),
+            nn.Conv2d(cndf, cndf, kernel_size=3, stride=1, padding=1, bias=False),
         )
-        D_xz.add_module(
-            "concat_LeakyReLU-{}".format(1024), nn.LeakyReLU(0.1, inplace=True)
+        D_x.add_module(
+            "extra_LeakyReLU-{}".format(cndf), nn.LeakyReLU(0.1, inplace=True)
         )
-        D_xz.add_module("concat_Dropout-{}".format(1024), nn.Dropout(inplace=True))
+        D_x.add_module("extra_Dropout-{}".format(cndf), nn.Dropout(inplace=True))
 
-        D_xz.add_module("last_Linear-{}-{}".format(1024, 1), nn.Linear(1024, 1))
+    D_x.add_module(
+        "last_Conv-{}-{}".format(cndf, cndf),
+        nn.Conv2d(cndf, cndf, kernel_size=4, stride=2, padding=1, bias=False),
+    )
+    D_x.add_module("last_LeakyReLU-{}".format(cndf), nn.LeakyReLU(0.1, inplace=True))
+    D_x.add_module("pyramid_Dropout-{}".format(cndf), nn.Dropout(inplace=True))
 
-        self.D_x = D_x
-        self.D_z = D_z
-        self.D_xz = D_xz
+    # D(z)
+    D_z = nn.Sequential()
 
-    def forward(self, x, z, y):
-        x_out = D_x(x)
-        z_out = D_z(z)
-        output = D_xz(y)
-        return output
+    D_z.add_module("z_Linear", nn.Linear(z_dim, 512))
+    D_z.add_module("z_LeakyReLU", nn.LeakyReLU(0.1, inplace=True))
+    D_z.add_module("z_Dropout", nn.Dropout(inplace=True))
+
+    # D(x,z)
+    D_xz = nn.Sequential()
+    D_xz.add_module(
+        "concat_Linear-{}-{}".format(512 + cndf * 8 * 8, 1024),
+        nn.Linear(512 + cndf * 8 * 8, 1024),
+    )
+    D_xz.add_module("concat_LeakyReLU-{}".format(1024), nn.LeakyReLU(0.1, inplace=True))
+    D_xz.add_module("concat_Dropout-{}".format(1024), nn.Dropout(inplace=True))
+    D_xz.add_module("last_Linear-{}-{}".format(1024, 1), nn.Linear(1024, 1))
+
+    return D_x, D_z, D_xz
 
 
 class NetD(nn.Module):
@@ -303,17 +259,17 @@ class NetD(nn.Module):
 
     def __init__(self, CONFIG):
         super(NetD, self).__init__()
-        model = Discriminator(
+        D_x, D_z, D_xz = make_Discriminator(
             CONFIG.input_size, CONFIG.z_dim, CONFIG.channel, CONFIG.ndf
         )
         # D(x)
-        layer_x = list(model.D_x.children())
+        layer_x = list(D_x.children())
         self.layer_x = nn.Sequential(*layer_x)
         # D(z)
-        layer_z = list(model.D_z.children())
+        layer_z = list(D_z.children())
         self.layer_z = nn.Sequential(*layer_z)
         # D(x,z)
-        layer = list(model.D_xz.children())
+        layer = list(D_xz.children())
         self.feature = nn.Sequential(*layer[:-1])
         self.classifier = nn.Sequential(layer[-1])
 
