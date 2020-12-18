@@ -1,6 +1,9 @@
-# Efficient GAN
+# Reimplementation of Efficient GAN based anomaly detection
 
-Efficient GAN network by using PyTorch
+Reimplementation of Efficient GAN based anomaly detection network by using PyTorch
+
+Efficient GAN based anomaly detection : https://arxiv.org/abs/1802.06222
+
 
 ## About CONFIG file
 
